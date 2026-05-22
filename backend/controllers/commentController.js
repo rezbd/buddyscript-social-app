@@ -1,85 +1,135 @@
 const Comment = require("../models/Comment");
-const Post    = require("../models/Post");
+const Post = require("../models/Post");
 
 const AUTHOR_SELECT = "firstName lastName";
 
-// ── POST /api/posts/:id/comments ─────────────────────────────────────────────
-exports.addComment = async (req, res) => {
-  const { content } = req.body;
-  try {
-    if (!content)
-      return res.status(400).json({ message: "Content is required" });
+const resolveAccessiblePost = async (postId, userId, res) => {
+  const post = await Post.findById(postId);
+  if (!post) {
+    res.status(404).json({ message: "Post not found." });
+    return null;
+  }
+  const isAuthor = String(post.author) === String(userId);
+  if (post.visibility === "private" && !isAuthor) {
+    res.status(403).json({ message: "You do not have permission to access this post." });
+    return null;
+  }
+  return post;
+};
 
-    const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ message: "Post not found" });
+// POST /api/posts/:id/comments
+exports.addComment = async (req, res) => {
+  const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+  if (!content) {
+    return res.status(400).json({ message: "Comment content is required." });
+  }
+  if (content.length > 1000) {
+    return res.status(400).json({ message: "Comment must be 1 000 characters or fewer." });
+  }
+
+  try {
+    const post = await resolveAccessiblePost(req.params.id, req.user._id, res);
+    if (!post) return;
 
     const comment = await Comment.create({
-      post:    post._id,
-      author:  req.user._id,
+      post: post._id,
+      author: req.user._id,
       content,
     });
 
     await comment.populate("author", AUTHOR_SELECT);
-    res.status(201).json(comment);
+    return res.status(201).json(comment);
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("[addComment]", err);
+    return res.status(500).json({ message: "Server error. Please try again later." });
   }
 };
 
-// ── GET /api/posts/:id/comments ──────────────────────────────────────────────
+// GET /api/posts/:id/comments
 exports.getComments = async (req, res) => {
   try {
-    const comments = await Comment.find({ post: req.params.id })
-      .sort({ createdAt: -1 })
-      .populate("author", AUTHOR_SELECT)
-      .populate("replies.author", AUTHOR_SELECT);
+    const post = await resolveAccessiblePost(req.params.id, req.user._id, res);
+    if (!post) return;
 
-    res.json(comments);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+    const skip = (page - 1) * limit;
+
+    const [comments, total] = await Promise.all([
+      Comment.find({ post: req.params.id })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("author", AUTHOR_SELECT)
+        .populate("replies.author", AUTHOR_SELECT)
+        .populate("likes", AUTHOR_SELECT),
+      Comment.countDocuments({ post: req.params.id }),
+    ]);
+
+    return res.json({
+      comments,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      hasMore: page * limit < total,
+      total,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("[getComments]", err);
+    return res.status(500).json({ message: "Server error. Please try again later." });
   }
 };
 
-// ── POST /api/comments/:id/like ───────────────────────────────────────────────
+// POST /api/comments/:id/like
 exports.toggleCommentLike = async (req, res) => {
   try {
     const comment = await Comment.findById(req.params.id);
-    if (!comment) return res.status(404).json({ message: "Comment not found" });
+    if (!comment) return res.status(404).json({ message: "Comment not found." });
 
-    const uid   = String(req.user._id);
-    const idx   = comment.likes.map(String).indexOf(uid);
+    const post = await resolveAccessiblePost(comment.post, req.user._id, res);
+    if (!post) return;
+
+    const uid = String(req.user._id);
+    const idx = comment.likes.map(String).indexOf(uid);
     const liked = idx === -1;
 
     if (liked) comment.likes.push(req.user._id);
-    else        comment.likes.splice(idx, 1);
+    else comment.likes.splice(idx, 1);
 
     await comment.save();
-    res.json({ liked, likeCount: comment.likes.length });
+    return res.json({ liked, likeCount: comment.likes.length });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("[toggleCommentLike]", err);
+    return res.status(500).json({ message: "Server error. Please try again later." });
   }
 };
 
-// ── POST /api/comments/:id/reply ─────────────────────────────────────────────
+// POST /api/comments/:id/reply
 exports.addReply = async (req, res) => {
-  const { content } = req.body;
-  try {
-    if (!content)
-      return res.status(400).json({ message: "Content is required" });
+  const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+  if (!content) {
+    return res.status(400).json({ message: "Reply content is required." });
+  }
+  if (content.length > 1000) {
+    return res.status(400).json({ message: "Reply must be 1 000 characters or fewer." });
+  }
 
+  try {
     const comment = await Comment.findById(req.params.id);
-    if (!comment) return res.status(404).json({ message: "Comment not found" });
+    if (!comment) return res.status(404).json({ message: "Comment not found." });
+
+    const post = await resolveAccessiblePost(comment.post, req.user._id, res);
+    if (!post) return;
 
     comment.replies.push({ author: req.user._id, content });
     await comment.save();
 
-    // Re-fetch to get populated reply author
     const updated = await Comment.findById(comment._id)
       .populate("author", AUTHOR_SELECT)
       .populate("replies.author", AUTHOR_SELECT);
 
-    res.status(201).json(updated.replies.at(-1));
+    return res.status(201).json(updated.replies.at(-1));
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("[addReply]", err);
+    return res.status(500).json({ message: "Server error. Please try again later." });
   }
 };
