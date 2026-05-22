@@ -1,11 +1,13 @@
 const express  = require("express");
 const router   = express.Router();
 const protect  = require("../middleware/authMiddleware");
-const { toggleCommentLike, addReply } = require("../controllers/commentController");
+const { toggleCommentLike, addReply, getComments } = require("../controllers/commentController");
 
-router.use(protect);
+// GET comments - needs auth middleware (which checks token validity)
+router.get("/:id/comments", protect, getComments);
 
-router.post("/:id/like",  toggleCommentLike);
-router.post("/:id/reply", addReply);
+// These routes require authentication
+router.post("/:id/like",  protect, toggleCommentLike);
+router.post("/:id/reply", protect, addReply);
 
 module.exports = router;

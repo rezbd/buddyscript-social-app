@@ -269,9 +269,9 @@ export default function PostItem({ post }) {
   const [commentsFetched, setCommentsFetched] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [cmtPending, setCmtPending] = useState(false);
-  const [cmtError, setCmtError] = useState("");  // Issue #2
+  const [cmtError, setCmtError] = useState("");
   const [loadingCmts, setLoadingCmts] = useState(false);
-  // Issue #5 — comment pagination state
+  // Comment pagination state
   const [cmtPage, setCmtPage] = useState(1);
   const [hasMoreCmts, setHasMoreCmts] = useState(false);
   const [loadingMoreCmts, setLoadingMoreCmts] = useState(false);
@@ -323,8 +323,12 @@ export default function PostItem({ post }) {
       if (pageNum === 1) setLoadingCmts(true);
       else setLoadingMoreCmts(true);
 
+      const token = localStorage.getItem("token");
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+
       const { data } = await api.get(`/posts/${post._id}/comments`, {
         params: { page: pageNum, limit: 5 },
+        ...config
       });
 
       const incoming = Array.isArray(data.comments) ? data.comments : [];
@@ -333,12 +337,22 @@ export default function PostItem({ post }) {
       setTotalCmts(data.total ?? 0);
       setCmtPage(pageNum);
       setCommentsFetched(true);
+
+      // Clear any previous error when fetch succeeds
+      setCmtError("");
     } catch (err) {
+      console.error("[fetchComments] Error:", err);
       if (err.response?.status === 403) {
         setCmtError("You don't have permission to view comments on this post.");
+      } else if (err.response?.status === 401) {
+        setCmtError("Please login to view comments.");
+      } else if (err.response?.status === 404) {
+        setCmtError("Post not found.");
       } else {
-        setCmtError("Failed to load comments.");
+        setCmtError("Failed to load comments. Please try again.");
       }
+      // Still mark as fetched to prevent re-fetching on toggle
+      setCommentsFetched(true);
     } finally {
       setLoadingCmts(false);
       setLoadingMoreCmts(false);
@@ -346,7 +360,11 @@ export default function PostItem({ post }) {
   };
 
   const handleToggleComments = async () => {
-    if (!showComments && !commentsFetched) await fetchComments(1);
+    if (!showComments && !commentsFetched) {
+      await fetchComments(1);
+    } else if (!showComments) {
+      // Comments were fetched but hidden - just show them
+    }
     setShowComments((v) => !v);
   };
 
@@ -361,13 +379,17 @@ export default function PostItem({ post }) {
       setComments((prev) => [data, ...prev]);
       setTotalCmts((n) => n + 1);
       setCommentText("");
-      if (!showComments) setShowComments(true);
-      setCommentsFetched(true);
+      if (!showComments) {
+        setShowComments(true);
+        setCommentsFetched(true);
+      }
     } catch (err) {
       if (err.response?.status === 403) {
         setCmtError("You don't have permission to comment on this post.");
       } else if (err.response?.status === 400) {
         setCmtError(err.response.data?.message || "Comment content is invalid.");
+      } else if (err.response?.status === 401) {
+        setCmtError("Please login to comment.");
       } else {
         setCmtError("Failed to post comment. Please try again.");
       }
@@ -546,7 +568,7 @@ export default function PostItem({ post }) {
             <p style={{ color: "#888", fontSize: "13px" }}>Loading comments…</p>
           )}
 
-          {!loadingCmts && comments.length === 0 && (
+          {!loadingCmts && comments.length === 0 && !cmtError && (
             <p style={{ color: "#aaa", fontSize: "13px" }}>
               No comments yet. Be the first!
             </p>

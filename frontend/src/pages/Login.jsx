@@ -9,8 +9,8 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
-  const [errors, setErrors] = useState({});        // field-level errors
-  const [formError, setFormError] = useState("");    // generic form-level error
+  const [errors, setErrors] = useState({});
+  const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
@@ -47,16 +47,19 @@ export default function Login() {
       login(data.token, data.user);
       navigate("/feed");
     } catch (err) {
+      setLoading(false);
       const status = err.response?.status;
-      if (status === 401 || status === 400) {
-        setFormError("Invalid email or password. Please try again.");
+      const message = err.response?.data?.message;
+
+      if (status === 401) {
+        setFormError(message || "Invalid email or password. Please check your credentials and try again.");
+      } else if (status === 400) {
+        setFormError(message || "Please check your email and password.");
       } else if (status === 429) {
         setFormError("Too many login attempts. Please wait a few minutes and try again.");
       } else {
-        setFormError("Something went wrong. Please try again later.");
+        setFormError(message || "Unable to login. Please try again later.");
       }
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -160,21 +163,8 @@ export default function Login() {
                   </div>
 
                   <div className="row">
-                    <div className="col-lg-6 col-xl-6 col-md-6 col-sm-12">
-                      <div className="form-check _social_login_form_check">
-                        <input
-                          className="form-check-input _social_login_form_check_input"
-                          type="checkbox"
-                          id="rememberMe"
-                        />
-                        <label className="form-check-label _social_login_form_check_label" htmlFor="rememberMe">
-                          Remember me
-                        </label>
-                      </div>
-                    </div>
-                    <div className="col-lg-6 col-xl-6 col-md-6 col-sm-12">
+                    <div className="col-lg-12">
                       <div className="_social_login_form_left">
-                        <p className="_social_login_form_left_para">Forgot password?</p>
                       </div>
                     </div>
                   </div>

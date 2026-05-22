@@ -67,41 +67,21 @@ export default function Register() {
       login(data.token, data.user);
       navigate("/feed");
     } catch (err) {
+      setLoading(false);
       const status = err.response?.status;
-      if (status === 409 || status === 400) {
-        setFormError(
-          err.response?.data?.message ||
-          "Registration failed. Please check your details and try again."
-        );
+      const message = err.response?.data?.message;
+
+      if (status === 409) {
+        setFormError("An account with this email already exists. Please use a different email or login.");
+      } else if (status === 400 && message) {
+        setFormError(message);
       } else if (status === 429) {
         setFormError("Too many attempts. Please wait a few minutes and try again.");
       } else {
-        setFormError("Something went wrong. Please try again later.");
+        setFormError("Unable to register. Please try again later.");
       }
-    } finally {
-      setLoading(false);
     }
   };
-
-  // Reusable field helper
-  const Field = ({ id, label, name, type = "text", placeholder, autoComplete }) => (
-    <div className="_social_registration_form_input _mar_b14">
-      <label className="_social_registration_label _mar_b8" htmlFor={id}>
-        {label}
-      </label>
-      <input
-        id={id}
-        type={type}
-        name={name}
-        value={form[name]}
-        onChange={handleChange}
-        className={`form-control _social_registration_input${errors[name] ? " is-invalid" : ""}`}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-      />
-      {errors[name] && <div className="invalid-feedback">{errors[name]}</div>}
-    </div>
-  );
 
   return (
     <section className="_social_registration_wrapper _layout_main_wrapper">
@@ -163,28 +143,103 @@ export default function Register() {
                 <div className="_social_registration_form">
                   <div className="row">
                     <div className="col-xl-6 col-lg-6 col-md-6 col-sm-12">
-                      <Field id="regFirstName" label="First Name" name="firstName"
-                        placeholder="First name" autoComplete="given-name" />
+                      <div className="_social_registration_form_input _mar_b14">
+                        <label className="_social_registration_label _mar_b8" htmlFor="regFirstName">
+                          First Name
+                        </label>
+                        <input
+                          id="regFirstName"
+                          type="text"
+                          name="firstName"
+                          value={form.firstName}
+                          onChange={handleChange}
+                          className={`form-control _social_registration_input${errors.firstName ? " is-invalid" : ""}`}
+                          placeholder="First name"
+                          autoComplete="given-name"
+                        />
+                        {errors.firstName && <div className="invalid-feedback">{errors.firstName}</div>}
+                      </div>
                     </div>
                     <div className="col-xl-6 col-lg-6 col-md-6 col-sm-12">
-                      <Field id="regLastName" label="Last Name" name="lastName"
-                        placeholder="Last name" autoComplete="family-name" />
+                      <div className="_social_registration_form_input _mar_b14">
+                        <label className="_social_registration_label _mar_b8" htmlFor="regLastName">
+                          Last Name
+                        </label>
+                        <input
+                          id="regLastName"
+                          type="text"
+                          name="lastName"
+                          value={form.lastName}
+                          onChange={handleChange}
+                          className={`form-control _social_registration_input${errors.lastName ? " is-invalid" : ""}`}
+                          placeholder="Last name"
+                          autoComplete="family-name"
+                        />
+                        {errors.lastName && <div className="invalid-feedback">{errors.lastName}</div>}
+                      </div>
                     </div>
+                  </div>
+
+                  <div className="row">
                     <div className="col-xl-12">
-                      <Field id="regEmail" label="Email" name="email"
-                        type="email" placeholder="Enter your email"
-                        autoComplete="email" />
+                      <div className="_social_registration_form_input _mar_b14">
+                        <label className="_social_registration_label _mar_b8" htmlFor="regEmail">
+                          Email
+                        </label>
+                        <input
+                          id="regEmail"
+                          type="email"
+                          name="email"
+                          value={form.email}
+                          onChange={handleChange}
+                          className={`form-control _social_registration_input${errors.email ? " is-invalid" : ""}`}
+                          placeholder="Enter your email"
+                          autoComplete="email"
+                        />
+                        {errors.email && <div className="invalid-feedback">{errors.email}</div>}
+                      </div>
                     </div>
+                  </div>
+
+                  <div className="row">
                     <div className="col-xl-12">
-                      <Field id="regPassword" label="Password" name="password"
-                        type="password" placeholder="Create a password (min. 8 chars)"
-                        autoComplete="new-password" />
+                      <div className="_social_registration_form_input _mar_b14">
+                        <label className="_social_registration_label _mar_b8" htmlFor="regPassword">
+                          Password
+                        </label>
+                        <input
+                          id="regPassword"
+                          type="password"
+                          name="password"
+                          value={form.password}
+                          onChange={handleChange}
+                          className={`form-control _social_registration_input${errors.password ? " is-invalid" : ""}`}
+                          placeholder="Create a password (min. 8 chars)"
+                          autoComplete="new-password"
+                        />
+                        {errors.password && <div className="invalid-feedback">{errors.password}</div>}
+                      </div>
                     </div>
+                  </div>
+
+                  <div className="row">
                     <div className="col-xl-12">
-                      <Field id="regConfirmPassword" label="Repeat Password"
-                        name="confirmPassword" type="password"
-                        placeholder="Repeat your password"
-                        autoComplete="new-password" />
+                      <div className="_social_registration_form_input _mar_b14">
+                        <label className="_social_registration_label _mar_b8" htmlFor="regConfirmPassword">
+                          Repeat Password
+                        </label>
+                        <input
+                          id="regConfirmPassword"
+                          type="password"
+                          name="confirmPassword"
+                          value={form.confirmPassword}
+                          onChange={handleChange}
+                          className={`form-control _social_registration_input${errors.confirmPassword ? " is-invalid" : ""}`}
+                          placeholder="Repeat your password"
+                          autoComplete="new-password"
+                        />
+                        {errors.confirmPassword && <div className="invalid-feedback">{errors.confirmPassword}</div>}
+                      </div>
                     </div>
                   </div>
 

@@ -48,26 +48,43 @@ exports.addComment = async (req, res) => {
 // GET /api/posts/:id/comments
 exports.getComments = async (req, res) => {
   try {
-    const post = await resolveAccessiblePost(req.params.id, req.user._id, res);
+    // The route is /api/posts/:id/comments, so the post ID is in req.params.id
+    const postId = req.params.id;
+
+    // Log for debugging
+    console.log(`[getComments] Request received for postId: ${postId}`);
+    console.log(`[getComments] req.params:`, JSON.stringify(req.params));
+
+    const post = await resolveAccessiblePost(postId, req.user._id, res);
     if (!post) return;
 
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 5));
     const skip = (page - 1) * limit;
 
+    // Log pagination info
+    console.log(`[getComments] page: ${page}, limit: ${limit}, skip: ${skip}`);
+
+    // Check if comments exist in the database
+    const totalCount = await Comment.countDocuments({ post: postId });
+    console.log(`[getComments] Total comments for post ${postId}: ${totalCount}`);
+
     const [comments, total] = await Promise.all([
-      Comment.find({ post: req.params.id })
+      Comment.find({ post: postId })
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .populate("author", AUTHOR_SELECT)
         .populate("replies.author", AUTHOR_SELECT)
         .populate("likes", AUTHOR_SELECT),
-      Comment.countDocuments({ post: req.params.id }),
+      Comment.countDocuments({ post: postId }),
     ]);
 
+    console.log(`[getComments] Fetched ${comments.length} comments from database`);
+
+    // Ensure we're returning a plain object, not a Mongoose document
     return res.json({
-      comments,
+      comments: comments.map(c => c.toObject()),
       currentPage: page,
       totalPages: Math.ceil(total / limit),
       hasMore: page * limit < total,
