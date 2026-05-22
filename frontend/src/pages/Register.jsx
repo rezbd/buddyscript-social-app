@@ -3,40 +3,105 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/axios";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function Register() {
-  const { login }   = useAuth();
-  const navigate    = useNavigate();
+  const { login } = useAuth();
+  const navigate = useNavigate();
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", password: "", confirmPassword: "",
   });
-  const [error,   setError]   = useState("");
+  const [errors, setErrors] = useState({});
+  const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) =>
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: "" }));
+  };
+
+  const validate = () => {
+    const errs = {};
+
+    if (!form.firstName.trim() || form.firstName.trim().length < 2)
+      errs.firstName = "First name must be at least 2 characters.";
+
+    if (!form.lastName.trim() || form.lastName.trim().length < 2)
+      errs.lastName = "Last name must be at least 2 characters.";
+
+    if (!form.email.trim())
+      errs.email = "Email is required.";
+    else if (!EMAIL_RE.test(form.email.trim()))
+      errs.email = "Please enter a valid email address.";
+
+    if (!form.password)
+      errs.password = "Password is required.";
+    else if (form.password.length < 8)
+      errs.password = "Password must be at least 8 characters.";
+
+    if (!form.confirmPassword)
+      errs.confirmPassword = "Please confirm your password.";
+    else if (form.password !== form.confirmPassword)
+      errs.confirmPassword = "Passwords do not match.";
+
+    return errs;
+  };
 
   const handleSubmit = async () => {
-    setError("");
-    const { firstName, lastName, email, password, confirmPassword } = form;
-
-    if (!firstName || !lastName || !email || !password || !confirmPassword)
-      return setError("Please fill in all fields.");
-    if (password !== confirmPassword)
-      return setError("Passwords do not match.");
-    if (password.length < 6)
-      return setError("Password must be at least 6 characters.");
+    setFormError("");
+    const errs = validate();
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      return;
+    }
 
     try {
       setLoading(true);
-      const { data } = await api.post("/auth/register", { firstName, lastName, email, password });
+      const { data } = await api.post("/auth/register", {
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim(),
+        password: form.password,
+      });
       login(data.token, data.user);
       navigate("/feed");
     } catch (err) {
-      setError(err.response?.data?.message || "Registration failed. Try again.");
+      const status = err.response?.status;
+      if (status === 409 || status === 400) {
+        setFormError(
+          err.response?.data?.message ||
+          "Registration failed. Please check your details and try again."
+        );
+      } else if (status === 429) {
+        setFormError("Too many attempts. Please wait a few minutes and try again.");
+      } else {
+        setFormError("Something went wrong. Please try again later.");
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  // Reusable field helper
+  const Field = ({ id, label, name, type = "text", placeholder, autoComplete }) => (
+    <div className="_social_registration_form_input _mar_b14">
+      <label className="_social_registration_label _mar_b8" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        name={name}
+        value={form[name]}
+        onChange={handleChange}
+        className={`form-control _social_registration_input${errors[name] ? " is-invalid" : ""}`}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+      />
+      {errors[name] && <div className="invalid-feedback">{errors[name]}</div>}
+    </div>
+  );
 
   return (
     <section className="_social_registration_wrapper _layout_main_wrapper">
@@ -76,7 +141,9 @@ export default function Register() {
                   <img src="/images/logo.svg" alt="Logo" className="_right_logo" />
                 </div>
                 <p className="_social_registration_content_para _mar_b8">Get Started Now</p>
-                <h4 className="_social_registration_content_title _titl4 _mar_b50">Registration</h4>
+                <h4 className="_social_registration_content_title _titl4 _mar_b50">
+                  Registration
+                </h4>
 
                 <button type="button" className="_social_registration_content_btn _mar_b40">
                   <img src="/images/google.svg" alt="" className="_google_img" />
@@ -87,77 +154,37 @@ export default function Register() {
                   <span>Or</span>
                 </div>
 
-                {error && (
-                  <div className="alert alert-danger" role="alert">{error}</div>
+                {formError && (
+                  <div className="alert alert-danger" role="alert" aria-live="assertive">
+                    {formError}
+                  </div>
                 )}
 
                 <div className="_social_registration_form">
                   <div className="row">
-                    {/* First & Last name — not in original HTML but required by backend */}
                     <div className="col-xl-6 col-lg-6 col-md-6 col-sm-12">
-                      <div className="_social_registration_form_input _mar_b14">
-                        <label className="_social_registration_label _mar_b8">First Name</label>
-                        <input
-                          type="text"
-                          name="firstName"
-                          value={form.firstName}
-                          onChange={handleChange}
-                          className="form-control _social_registration_input"
-                          placeholder="First name"
-                        />
-                      </div>
+                      <Field id="regFirstName" label="First Name" name="firstName"
+                        placeholder="First name" autoComplete="given-name" />
                     </div>
                     <div className="col-xl-6 col-lg-6 col-md-6 col-sm-12">
-                      <div className="_social_registration_form_input _mar_b14">
-                        <label className="_social_registration_label _mar_b8">Last Name</label>
-                        <input
-                          type="text"
-                          name="lastName"
-                          value={form.lastName}
-                          onChange={handleChange}
-                          className="form-control _social_registration_input"
-                          placeholder="Last name"
-                        />
-                      </div>
+                      <Field id="regLastName" label="Last Name" name="lastName"
+                        placeholder="Last name" autoComplete="family-name" />
                     </div>
                     <div className="col-xl-12">
-                      <div className="_social_registration_form_input _mar_b14">
-                        <label className="_social_registration_label _mar_b8">Email</label>
-                        <input
-                          type="email"
-                          name="email"
-                          value={form.email}
-                          onChange={handleChange}
-                          className="form-control _social_registration_input"
-                          placeholder="Enter your email"
-                        />
-                      </div>
+                      <Field id="regEmail" label="Email" name="email"
+                        type="email" placeholder="Enter your email"
+                        autoComplete="email" />
                     </div>
                     <div className="col-xl-12">
-                      <div className="_social_registration_form_input _mar_b14">
-                        <label className="_social_registration_label _mar_b8">Password</label>
-                        <input
-                          type="password"
-                          name="password"
-                          value={form.password}
-                          onChange={handleChange}
-                          className="form-control _social_registration_input"
-                          placeholder="Create a password"
-                        />
-                      </div>
+                      <Field id="regPassword" label="Password" name="password"
+                        type="password" placeholder="Create a password (min. 8 chars)"
+                        autoComplete="new-password" />
                     </div>
                     <div className="col-xl-12">
-                      <div className="_social_registration_form_input _mar_b14">
-                        <label className="_social_registration_label _mar_b8">Repeat Password</label>
-                        <input
-                          type="password"
-                          name="confirmPassword"
-                          value={form.confirmPassword}
-                          onChange={handleChange}
-                          className="form-control _social_registration_input"
-                          placeholder="Repeat your password"
-                        />
-                      </div>
+                      <Field id="regConfirmPassword" label="Repeat Password"
+                        name="confirmPassword" type="password"
+                        placeholder="Repeat your password"
+                        autoComplete="new-password" />
                     </div>
                   </div>
 
@@ -169,7 +196,10 @@ export default function Register() {
                           type="checkbox"
                           id="agreeTerms"
                         />
-                        <label className="form-check-label _social_registration_form_check_label" htmlFor="agreeTerms">
+                        <label
+                          className="form-check-label _social_registration_form_check_label"
+                          htmlFor="agreeTerms"
+                        >
                           I agree to terms &amp; conditions
                         </label>
                       </div>
@@ -185,7 +215,7 @@ export default function Register() {
                           onClick={handleSubmit}
                           disabled={loading}
                         >
-                          {loading ? "Registering..." : "Register now"}
+                          {loading ? "Registering…" : "Register now"}
                         </button>
                       </div>
                     </div>

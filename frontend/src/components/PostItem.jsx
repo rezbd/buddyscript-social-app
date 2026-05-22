@@ -2,77 +2,86 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/axios";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 const timeAgo = (dateStr) => {
   const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
-  if (diff < 60)    return `${diff}s ago`;
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
 };
 
-// ── CommentItem ───────────────────────────────────────────────────────────────
-// Handles like + reply for a single comment
 
 function CommentItem({ comment: initialComment }) {
   const { user } = useAuth();
-  const [comment,      setComment]      = useState(initialComment);
-  const [replyOpen,    setReplyOpen]    = useState(false);
-  const [replyText,    setReplyText]    = useState("");
-  const [submitting,   setSubmitting]   = useState(false);
-  const [likePending,  setLikePending]  = useState(false);
+  const [comment, setComment] = useState(initialComment);
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyText, setReplyText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [likePending, setLikePending] = useState(false);
+  const [error, setError] = useState("");
   const replyRef = useRef(null);
 
-  const likedByMe  = comment.likes?.map(String).includes(String(user?.id));
-  const likeCount  = comment.likes?.length || 0;
+  const likedByMe = comment.likes?.map(String).includes(String(user?.id));
+  const likeCount = comment.likes?.length ?? 0;
 
-  // Focus reply input when opened
   useEffect(() => {
     if (replyOpen && replyRef.current) replyRef.current.focus();
   }, [replyOpen]);
 
-  // ── Like comment ─────────────────────────────────────────────────────────
   const handleLikeComment = async () => {
     if (likePending) return;
-    // Optimistic update
+    setError("");
+
+    const snapshot = { ...comment, likes: [...(comment.likes ?? [])] };
+
     setComment((prev) => {
-      const alreadyLiked = prev.likes?.map(String).includes(String(user?.id));
+      const already = prev.likes?.map(String).includes(String(user?.id));
       return {
         ...prev,
-        likes: alreadyLiked
+        likes: already
           ? prev.likes.filter((id) => String(id) !== String(user?.id))
-          : [...(prev.likes || []), user?.id],
+          : [...(prev.likes ?? []), user?.id],
       };
     });
+
     try {
       setLikePending(true);
       await api.post(`/comments/${comment._id}/like`);
     } catch (err) {
-      // Revert on error
-      setComment(initialComment);
-      console.error(err);
+      setComment(snapshot);
+      if (err.response?.status === 403) {
+        setError("You don't have permission to like this comment.");
+      } else {
+        setError("Failed to update like. Please try again.");
+      }
     } finally {
       setLikePending(false);
     }
   };
 
-  // ── Submit reply ─────────────────────────────────────────────────────────
   const handleReply = async () => {
     if (!replyText.trim() || submitting) return;
+    setError("");
     try {
       setSubmitting(true);
       const { data } = await api.post(`/comments/${comment._id}/reply`, {
-        content: replyText,
+        content: replyText.trim(),
       });
       setComment((prev) => ({
         ...prev,
-        replies: [...(prev.replies || []), data],
+        replies: [...(prev.replies ?? []), data],
       }));
       setReplyText("");
       setReplyOpen(false);
     } catch (err) {
-      console.error(err);
+      if (err.response?.status === 403) {
+        setError("You don't have permission to reply to this comment.");
+      } else if (err.response?.status === 400) {
+        setError(err.response.data?.message || "Reply content is invalid.");
+      } else {
+        setError("Failed to post reply. Please try again.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -86,7 +95,6 @@ function CommentItem({ comment: initialComment }) {
       <div className="_comment_area" style={{ flex: 1 }}>
         <div className="_comment_details">
 
-          {/* Author + content */}
           <div className="_comment_details_top">
             <h4 className="_comment_name_title">
               {comment.author?.firstName} {comment.author?.lastName}
@@ -98,13 +106,13 @@ function CommentItem({ comment: initialComment }) {
             </p>
           </div>
 
-          {/* Like count badge */}
           {likeCount > 0 && (
             <div className="_total_reactions" style={{ marginBottom: "4px" }}>
               <div className="_total_react">
                 <span className="_reaction_like">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
-                    fill={likedByMe ? "#377DFF" : "none"} stroke={likedByMe ? "#377DFF" : "currentColor"}
+                    fill={likedByMe ? "#377DFF" : "none"}
+                    stroke={likedByMe ? "#377DFF" : "currentColor"}
                     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
                   </svg>
@@ -114,7 +122,10 @@ function CommentItem({ comment: initialComment }) {
             </div>
           )}
 
-          {/* Action row: Like · Reply · time */}
+          {error && (
+            <p style={{ color: "#dc3545", fontSize: "12px", margin: "4px 0" }}>{error}</p>
+          )}
+
           <div className="_comment_reply">
             <ul className="_comment_reply_list">
               <li>
@@ -154,14 +165,11 @@ function CommentItem({ comment: initialComment }) {
               <textarea
                 ref={replyRef}
                 className="form-control _comment_textarea"
-                placeholder={`Reply to ${comment.author?.firstName}...`}
+                placeholder={`Reply to ${comment.author?.firstName}…`}
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleReply();
-                  }
+                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(); }
                   if (e.key === "Escape") setReplyOpen(false);
                 }}
                 rows={1}
@@ -176,7 +184,9 @@ function CommentItem({ comment: initialComment }) {
                 }}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="13" fill="none" viewBox="0 0 14 13">
-                  <path fill="#377DFF" fillRule="evenodd" d="M6.37 7.879l2.438 3.955a.335.335 0 00.34.162c.068-.01.23-.05.289-.247l3.049-10.297a.348.348 0 00-.09-.35.341.341 0 00-.34-.088L1.75 4.03a.34.34 0 00-.247.289.343.343 0 00.16.347L5.666 7.17 9.2 3.597a.5.5 0 01.712.703L6.37 7.88z" clipRule="evenodd" />
+                  <path fill="#377DFF" fillRule="evenodd"
+                    d="M6.37 7.879l2.438 3.955a.335.335 0 00.34.162c.068-.01.23-.05.289-.247l3.049-10.297a.348.348 0 00-.09-.35.341.341 0 00-.34-.088L1.75 4.03a.34.34 0 00-.247.289.343.343 0 00.16.347L5.666 7.17 9.2 3.597a.5.5 0 01.712.703L6.37 7.88z"
+                    clipRule="evenodd" />
                 </svg>
               </button>
             </div>
@@ -187,7 +197,7 @@ function CommentItem({ comment: initialComment }) {
         {comment.replies?.length > 0 && (
           <div style={{ marginTop: "10px", paddingLeft: "16px", borderLeft: "2px solid #eee" }}>
             {comment.replies.map((reply, i) => (
-              <div key={reply._id || i} style={{ marginBottom: "8px" }}>
+              <div key={reply._id ?? i} style={{ marginBottom: "8px" }}>
                 <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
                   <img src="/images/txt_img.png" alt="" className="_comment_img1"
                     style={{ width: "26px", height: "26px", borderRadius: "50%" }} />
@@ -212,8 +222,6 @@ function CommentItem({ comment: initialComment }) {
   );
 }
 
-// ── LikesPopover ──────────────────────────────────────────────────────────────
-// Tooltip listing names of users who liked the post
 
 function LikesPopover({ likerNames, visible }) {
   if (!visible || likerNames.length === 0) return null;
@@ -230,11 +238,12 @@ function LikesPopover({ likerNames, visible }) {
       whiteSpace: "nowrap",
       zIndex: 100,
       boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-      maxWidth: "220px",
+      maxWidth: "240px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
     }}>
       {likerNames.slice(0, 8).join(", ")}
       {likerNames.length > 8 && ` +${likerNames.length - 8} more`}
-      {/* Arrow */}
       <div style={{
         position: "absolute", bottom: "-6px", left: "14px",
         width: 0, height: 0,
@@ -246,121 +255,129 @@ function LikesPopover({ likerNames, visible }) {
   );
 }
 
-// ── PostItem ──────────────────────────────────────────────────────────────────
 
 export default function PostItem({ post }) {
   const { user } = useAuth();
 
-  // ── Like state (optimistic) ───────────────────────────────────────────────
-  const [likes,       setLikes]       = useState(post.likes || []);
+  const [likes, setLikes] = useState(post.likes ?? []);
   const [likePending, setLikePending] = useState(false);
+  const [likeError, setLikeError] = useState("");
   const [popoverVisible, setPopoverVisible] = useState(false);
 
-  // ── Comment state ─────────────────────────────────────────────────────────
-  const [comments,     setComments]     = useState([]);
+  const [comments, setComments] = useState([]);
   const [showComments, setShowComments] = useState(false);
   const [commentsFetched, setCommentsFetched] = useState(false);
-  const [commentText,  setCommentText]  = useState("");
-  const [cmtPending,   setCmtPending]   = useState(false);
-  const [loadingCmts,  setLoadingCmts]  = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [cmtPending, setCmtPending] = useState(false);
+  const [cmtError, setCmtError] = useState("");  // Issue #2
+  const [loadingCmts, setLoadingCmts] = useState(false);
+  // Issue #5 — comment pagination state
+  const [cmtPage, setCmtPage] = useState(1);
+  const [hasMoreCmts, setHasMoreCmts] = useState(false);
+  const [loadingMoreCmts, setLoadingMoreCmts] = useState(false);
+  const [totalCmts, setTotalCmts] = useState(post.commentCount ?? 0);
 
-  const likedByMe = likes.map(String).includes(String(user?.id));
+  const likedByMe = likes.some((l) => String(l._id ?? l) === String(user?.id));
   const likeCount = likes.length;
 
-  // Build liker names from the likes array.
-  // The API returns likes as an array of user-id strings (after toggle),
-  // so we can only show "You" for self; for a richer list you'd populate
-  // likes on the backend GET feed endpoint (already done via enrichPost).
-  const likerNames = post.likes?.map
-    ? post.likes.map((l) =>
-        typeof l === "object"
-          ? `${l.firstName} ${l.lastName}`
-          : String(l) === String(user?.id)
-          ? `${user.firstName} ${user.lastName}`
-          : "Someone"
-      )
-    : [];
-
-  // Sync like names after optimistic update by tracking local like ids
-  const [likeIds, setLikeIds] = useState(
-    (post.likes || []).map((l) => (typeof l === "object" ? l._id || l : l))
+  const likerNames = likes.map((l) =>
+    typeof l === "object"
+      ? `${l.firstName} ${l.lastName}`
+      : String(l) === String(user?.id)
+        ? `${user.firstName} ${user.lastName}`
+        : "Someone"
   );
 
-  // ── Like post (optimistic) ────────────────────────────────────────────────
   const handleLike = async () => {
     if (likePending) return;
+    setLikeError("");
 
-    const alreadyLiked = likeIds.map(String).includes(String(user?.id));
+    const snapshot = [...likes];
 
-    // Optimistic
-    if (alreadyLiked) {
-      setLikeIds((prev) => prev.filter((id) => String(id) !== String(user?.id)));
-      setLikes((prev) => prev.filter((id) => String(id) !== String(user?.id)));
+    if (likedByMe) {
+      setLikes((prev) => prev.filter((l) => String(l._id ?? l) !== String(user?.id)));
     } else {
-      setLikeIds((prev) => [...prev, user?.id]);
-      setLikes((prev) => [...prev, user?.id]);
+      setLikes((prev) => [
+        ...prev,
+        { _id: user?.id, firstName: user?.firstName, lastName: user?.lastName },
+      ]);
     }
 
     try {
       setLikePending(true);
       await api.post(`/posts/${post._id}/like`);
-      // Server confirms — we already updated optimistically, nothing more needed
     } catch (err) {
-      // Revert
-      setLikeIds((post.likes || []).map((l) => (typeof l === "object" ? l._id || l : l)));
-      setLikes(post.likes || []);
-      console.error(err);
+      setLikes(snapshot);
+      if (err.response?.status === 403) {
+        setLikeError("You don't have permission to like this post.");
+      } else {
+        setLikeError("Failed to update like. Please try again.");
+      }
     } finally {
       setLikePending(false);
     }
   };
 
-  // ── Load comments ─────────────────────────────────────────────────────────
-  const fetchComments = async () => {
-    if (commentsFetched) return;
+  const fetchComments = async (pageNum = 1) => {
     try {
-      setLoadingCmts(true);
-      const { data } = await api.get(`/posts/${post._id}/comments`);
-      setComments(data);
+      if (pageNum === 1) setLoadingCmts(true);
+      else setLoadingMoreCmts(true);
+
+      const { data } = await api.get(`/posts/${post._id}/comments`, {
+        params: { page: pageNum, limit: 5 },
+      });
+
+      const incoming = Array.isArray(data.comments) ? data.comments : [];
+      setComments((prev) => pageNum === 1 ? incoming : [...prev, ...incoming]);
+      setHasMoreCmts(data.hasMore ?? false);
+      setTotalCmts(data.total ?? 0);
+      setCmtPage(pageNum);
       setCommentsFetched(true);
     } catch (err) {
-      console.error(err);
+      if (err.response?.status === 403) {
+        setCmtError("You don't have permission to view comments on this post.");
+      } else {
+        setCmtError("Failed to load comments.");
+      }
     } finally {
       setLoadingCmts(false);
+      setLoadingMoreCmts(false);
     }
   };
 
   const handleToggleComments = async () => {
-    if (!showComments) await fetchComments();
+    if (!showComments && !commentsFetched) await fetchComments(1);
     setShowComments((v) => !v);
   };
 
-  // ── Submit new comment ────────────────────────────────────────────────────
   const handleComment = async () => {
     if (!commentText.trim() || cmtPending) return;
+    setCmtError("");
     try {
       setCmtPending(true);
       const { data } = await api.post(`/posts/${post._id}/comments`, {
-        content: commentText,
+        content: commentText.trim(),
       });
       setComments((prev) => [data, ...prev]);
+      setTotalCmts((n) => n + 1);
       setCommentText("");
       if (!showComments) setShowComments(true);
-      if (!commentsFetched) setCommentsFetched(true);
+      setCommentsFetched(true);
     } catch (err) {
-      console.error(err);
+      if (err.response?.status === 403) {
+        setCmtError("You don't have permission to comment on this post.");
+      } else if (err.response?.status === 400) {
+        setCmtError(err.response.data?.message || "Comment content is invalid.");
+      } else {
+        setCmtError("Failed to post comment. Please try again.");
+      }
     } finally {
       setCmtPending(false);
     }
   };
 
-  // ── Derived ───────────────────────────────────────────────────────────────
-  const likedByMeCurrent = likeIds.map(String).includes(String(user?.id));
-
   return (
     <div className="_feed_inner_timeline_post_area _b_radious6 _padd_b24 _padd_t24 _mar_b16">
-
-      {/* ── Post header ──────────────────────────────────────────────────── */}
       <div className="_feed_inner_timeline_content _padd_r24 _padd_l24">
         <div className="_feed_inner_timeline_post_top">
           <div className="_feed_inner_timeline_post_box">
@@ -379,10 +396,10 @@ export default function PostItem({ post }) {
           </div>
         </div>
 
-        {/* Content */}
-        <p style={{ margin: "12px 0", lineHeight: "1.7" }}>{post.content}</p>
+        {post.content && (
+          <p style={{ margin: "12px 0", lineHeight: "1.7" }}>{post.content}</p>
+        )}
 
-        {/* Image */}
         {post.image && (
           <div className="_feed_inner_timeline_image">
             <img
@@ -395,25 +412,13 @@ export default function PostItem({ post }) {
         )}
       </div>
 
-      {/* ── Counts row ────────────────────────────────────────────────────── */}
       <div className="_feed_inner_timeline_total_reacts _padd_r24 _padd_l24 _mar_b26">
-
-        {/* Like count with hover popover */}
         <div
           style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}
           onMouseEnter={() => setPopoverVisible(true)}
           onMouseLeave={() => setPopoverVisible(false)}
         >
-          <LikesPopover
-            likerNames={
-              likeIds.map((id) =>
-                String(id) === String(user?.id)
-                  ? `${user.firstName} ${user.lastName}`
-                  : "Someone"
-              )
-            }
-            visible={popoverVisible}
-          />
+          <LikesPopover likerNames={likerNames} visible={popoverVisible} />
           <span style={{ fontSize: "13px", color: "#555" }}>
             {likeCount} {likeCount === 1 ? "Like" : "Likes"}
           </span>
@@ -425,36 +430,39 @@ export default function PostItem({ post }) {
               onClick={handleToggleComments}
               style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: "13px" }}
             >
-              <span>{comments.length}</span> Comment{comments.length !== 1 ? "s" : ""}
+              <span>{totalCmts}</span> Comment{totalCmts !== 1 ? "s" : ""}
             </button>
           </p>
         </div>
       </div>
 
-      {/* ── Reaction bar ─────────────────────────────────────────────────── */}
+      {likeError && (
+        <p style={{ color: "#dc3545", fontSize: "12px", margin: "0 24px 8px", padding: 0 }}>
+          {likeError}
+        </p>
+      )}
+
       <div className="_feed_inner_timeline_reaction">
 
-        {/* Like button */}
         <button
-          className={`_feed_inner_timeline_reaction_emoji _feed_reaction${likedByMeCurrent ? " _feed_reaction_active" : ""}`}
+          className={`_feed_inner_timeline_reaction_emoji _feed_reaction${likedByMe ? " _feed_reaction_active" : ""}`}
           onClick={handleLike}
           disabled={likePending}
         >
           <span className="_feed_inner_timeline_reaction_link">
             <span>
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-                fill={likedByMeCurrent ? "#377DFF" : "none"}
-                stroke={likedByMeCurrent ? "#377DFF" : "currentColor"}
+                fill={likedByMe ? "#377DFF" : "none"}
+                stroke={likedByMe ? "#377DFF" : "currentColor"}
                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z" />
                 <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
               </svg>
-              {likedByMeCurrent ? "Liked" : "Like"}
+              {likedByMe ? "Liked" : "Like"}
             </span>
           </span>
         </button>
 
-        {/* Comment toggle */}
         <button
           className="_feed_inner_timeline_reaction_comment _feed_reaction"
           onClick={handleToggleComments}
@@ -470,7 +478,6 @@ export default function PostItem({ post }) {
           </span>
         </button>
 
-        {/* Share (static UI only) */}
         <button className="_feed_inner_timeline_reaction_share _feed_reaction">
           <span className="_feed_inner_timeline_reaction_link">
             <span>
@@ -482,8 +489,6 @@ export default function PostItem({ post }) {
           </span>
         </button>
       </div>
-
-      {/* ── Comment input ─────────────────────────────────────────────────── */}
       <div className="_feed_inner_timeline_cooment_area">
         <div className="_feed_inner_comment_box">
           <div className="_feed_inner_comment_box_form">
@@ -494,9 +499,12 @@ export default function PostItem({ post }) {
               <div className="_feed_inner_comment_box_content_txt">
                 <textarea
                   className="form-control _comment_textarea"
-                  placeholder="Write a comment..."
+                  placeholder="Write a comment…"
                   value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
+                  onChange={(e) => {
+                    setCommentText(e.target.value);
+                    if (cmtError) setCmtError("");
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -524,23 +532,44 @@ export default function PostItem({ post }) {
               </button>
             </div>
           </div>
+          {cmtError && (
+            <p style={{ color: "#dc3545", fontSize: "12px", margin: "4px 0 0 8px" }}>
+              {cmtError}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* ── Comments list ─────────────────────────────────────────────────── */}
       {showComments && (
         <div style={{ paddingLeft: "24px", paddingRight: "24px", marginTop: "8px" }}>
           {loadingCmts && (
-            <p style={{ color: "#888", fontSize: "13px" }}>Loading comments...</p>
+            <p style={{ color: "#888", fontSize: "13px" }}>Loading comments…</p>
           )}
+
           {!loadingCmts && comments.length === 0 && (
             <p style={{ color: "#aaa", fontSize: "13px" }}>
               No comments yet. Be the first!
             </p>
           )}
-          {!loadingCmts && comments.map((c) => (
+
+          {comments.map((c) => (
             <CommentItem key={c._id} comment={c} />
           ))}
+          {hasMoreCmts && (
+            <div style={{ marginTop: "10px" }}>
+              <button
+                onClick={() => fetchComments(cmtPage + 1)}
+                disabled={loadingMoreCmts}
+                style={{
+                  background: "none", border: "1px solid #ddd", borderRadius: "4px",
+                  padding: "4px 12px", cursor: "pointer", fontSize: "12px", color: "#555",
+                  opacity: loadingMoreCmts ? 0.6 : 1,
+                }}
+              >
+                {loadingMoreCmts ? "Loading…" : `Load more comments (${comments.length} of ${totalCmts})`}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

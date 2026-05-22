@@ -3,27 +3,58 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../api/axios";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function Login() {
-  const { login }   = useAuth();
-  const navigate    = useNavigate();
-  const [form, setForm]     = useState({ email: "", password: "" });
-  const [error, setError]   = useState("");
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [errors, setErrors] = useState({});        // field-level errors
+  const [formError, setFormError] = useState("");    // generic form-level error
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) =>
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: "" }));
+  };
+
+  const validate = () => {
+    const errs = {};
+    if (!form.email.trim())
+      errs.email = "Email is required.";
+    else if (!EMAIL_RE.test(form.email.trim()))
+      errs.email = "Please enter a valid email address.";
+    if (!form.password)
+      errs.password = "Password is required.";
+    return errs;
+  };
 
   const handleSubmit = async () => {
-    setError("");
-    if (!form.email || !form.password)
-      return setError("Please fill in all fields.");
+    setFormError("");
+    const errs = validate();
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      return;
+    }
+
     try {
       setLoading(true);
-      const { data } = await api.post("/auth/login", form);
+      const { data } = await api.post("/auth/login", {
+        email: form.email.trim(),
+        password: form.password,
+      });
       login(data.token, data.user);
       navigate("/feed");
     } catch (err) {
-      setError(err.response?.data?.message || "Login failed. Try again.");
+      const status = err.response?.status;
+      if (status === 401 || status === 400) {
+        setFormError("Invalid email or password. Please try again.");
+      } else if (status === 429) {
+        setFormError("Too many login attempts. Please wait a few minutes and try again.");
+      } else {
+        setFormError("Something went wrong. Please try again later.");
+      }
     } finally {
       setLoading(false);
     }
@@ -64,7 +95,9 @@ export default function Login() {
                   <img src="/images/logo.svg" alt="Logo" className="_left_logo" />
                 </div>
                 <p className="_social_login_content_para _mar_b8">Welcome back</p>
-                <h4 className="_social_login_content_title _titl4 _mar_b50">Login to your account</h4>
+                <h4 className="_social_login_content_title _titl4 _mar_b50">
+                  Login to your account
+                </h4>
 
                 <button type="button" className="_social_login_content_btn _mar_b40">
                   <img src="/images/google.svg" alt="" className="_google_img" />
@@ -75,36 +108,53 @@ export default function Login() {
                   <span>Or</span>
                 </div>
 
-                {error && (
-                  <div className="alert alert-danger" role="alert">{error}</div>
+                {formError && (
+                  <div className="alert alert-danger" role="alert" aria-live="assertive">
+                    {formError}
+                  </div>
                 )}
 
                 <div className="_social_login_form">
                   <div className="row">
                     <div className="col-xl-12">
                       <div className="_social_login_form_input _mar_b14">
-                        <label className="_social_login_label _mar_b8">Email</label>
+                        <label className="_social_login_label _mar_b8" htmlFor="loginEmail">
+                          Email
+                        </label>
                         <input
+                          id="loginEmail"
                           type="email"
                           name="email"
                           value={form.email}
                           onChange={handleChange}
-                          className="form-control _social_login_input"
+                          className={`form-control _social_login_input${errors.email ? " is-invalid" : ""}`}
                           placeholder="Enter your email"
+                          autoComplete="email"
                         />
+                        {errors.email && (
+                          <div className="invalid-feedback">{errors.email}</div>
+                        )}
                       </div>
                     </div>
+
                     <div className="col-xl-12">
                       <div className="_social_login_form_input _mar_b14">
-                        <label className="_social_login_label _mar_b8">Password</label>
+                        <label className="_social_login_label _mar_b8" htmlFor="loginPassword">
+                          Password
+                        </label>
                         <input
+                          id="loginPassword"
                           type="password"
                           name="password"
                           value={form.password}
                           onChange={handleChange}
-                          className="form-control _social_login_input"
+                          className={`form-control _social_login_input${errors.password ? " is-invalid" : ""}`}
                           placeholder="Enter your password"
+                          autoComplete="current-password"
                         />
+                        {errors.password && (
+                          <div className="invalid-feedback">{errors.password}</div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -138,7 +188,7 @@ export default function Login() {
                           onClick={handleSubmit}
                           disabled={loading}
                         >
-                          {loading ? "Logging in..." : "Login now"}
+                          {loading ? "Logging in…" : "Login now"}
                         </button>
                       </div>
                     </div>
