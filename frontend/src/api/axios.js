@@ -1,14 +1,12 @@
-// frontend/src/api/axios.js
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "https://social-app-backend-efhv.onrender.com/api",
-  timeout: 15000, // 15 second timeout
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
+  timeout: 15000,
 });
 
 // Attach JWT to every request if present
 api.interceptors.request.use((config) => {
-  // Always read fresh from localStorage
   const token = localStorage.getItem("token");
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -16,11 +14,9 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Add response interceptor for better error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Log errors for debugging
     if (error.response) {
       console.error("[API Error]", error.config?.url, error.response?.status, error.response?.data);
     } else if (error.request) {

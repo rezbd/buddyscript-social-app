@@ -274,7 +274,7 @@ export default function PostItem({ post }) {
   const [cmtPage, setCmtPage] = useState(1);
   const [hasMoreCmts, setHasMoreCmts] = useState(false);
   const [loadingMoreCmts, setLoadingMoreCmts] = useState(false);
-  const [totalCmts, setTotalCmts] = useState(post.commentCount ?? null);
+  const [totalCmts, setTotalCmts] = useState(post.commentCount ?? 0);
 
   const likedByMe = likes.some((l) => String(l._id ?? l) === String(user?.id));
   const likeCount = likes.length;
@@ -322,12 +322,8 @@ export default function PostItem({ post }) {
       if (pageNum === 1) setLoadingCmts(true);
       else setLoadingMoreCmts(true);
 
-      const token = localStorage.getItem("token");
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-
       const { data } = await api.get(`/posts/${post._id}/comments`, {
         params: { page: pageNum, limit: 5 },
-        ...config
       });
 
       const incoming = Array.isArray(data) ? data : (Array.isArray(data.comments) ? data.comments : []);
@@ -378,7 +374,7 @@ export default function PostItem({ post }) {
 
       if (showComments) {
         setComments((prev) => [data, ...prev]);
-        setTotalCmts((n) => (n === null ? 1 : n + 1));
+        setTotalCmts((n) => n + 1);
       } else {
         await fetchComments(1);
         setShowComments(true);
@@ -452,7 +448,7 @@ export default function PostItem({ post }) {
               onClick={handleToggleComments}
               style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: "13px" }}
             >
-              {totalCmts === null ? "Comments" : `${totalCmts} ${totalCmts !== 1 ? "Comments" : "Comment"}`}
+              {totalCmts} {totalCmts !== 1 ? "Comments" : "Comment"}
             </button>
           </p>
         </div>
