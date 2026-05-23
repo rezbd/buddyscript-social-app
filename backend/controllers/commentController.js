@@ -48,12 +48,7 @@ exports.addComment = async (req, res) => {
 // GET /api/posts/:id/comments
 exports.getComments = async (req, res) => {
   try {
-    // The route is /api/posts/:id/comments, so the post ID is in req.params.id
     const postId = req.params.id;
-
-    // Log for debugging
-    console.log(`[getComments] Request received for postId: ${postId}`);
-    console.log(`[getComments] req.params:`, JSON.stringify(req.params));
 
     const post = await resolveAccessiblePost(postId, req.user._id, res);
     if (!post) return;
@@ -61,13 +56,6 @@ exports.getComments = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 5));
     const skip = (page - 1) * limit;
-
-    // Log pagination info
-    console.log(`[getComments] page: ${page}, limit: ${limit}, skip: ${skip}`);
-
-    // Check if comments exist in the database
-    const totalCount = await Comment.countDocuments({ post: postId });
-    console.log(`[getComments] Total comments for post ${postId}: ${totalCount}`);
 
     const [comments, total] = await Promise.all([
       Comment.find({ post: postId })
@@ -80,9 +68,6 @@ exports.getComments = async (req, res) => {
       Comment.countDocuments({ post: postId }),
     ]);
 
-    console.log(`[getComments] Fetched ${comments.length} comments from database`);
-
-    // Ensure we're returning a plain object, not a Mongoose document
     return res.json({
       comments: comments.map(c => c.toObject()),
       currentPage: page,
@@ -113,15 +98,7 @@ exports.toggleCommentLike = async (req, res) => {
     else comment.likes.splice(idx, 1);
 
     await comment.save();
-    await comment.populate("author", AUTHOR_SELECT);
-    await comment.populate("likes", AUTHOR_SELECT);
-    await comment.populate("replies.author", AUTHOR_SELECT);
-
-    return res.json({
-      liked,
-      likeCount: comment.likes.length,
-      comment: comment.toObject()
-    });
+    return res.json({ liked, likeCount: comment.likes.length });
   } catch (err) {
     console.error("[toggleCommentLike]", err);
     return res.status(500).json({ message: "Server error. Please try again later." });
@@ -145,16 +122,14 @@ exports.addReply = async (req, res) => {
     const post = await resolveAccessiblePost(comment.post, req.user._id, res);
     if (!post) return;
 
-    comment.replies.push({ author: req.user._id, content, likes: [] });
+    comment.replies.push({ author: req.user._id, content });
     await comment.save();
 
     const updated = await Comment.findById(comment._id)
       .populate("author", AUTHOR_SELECT)
       .populate("replies.author", AUTHOR_SELECT);
 
-    const newReply = updated.replies.at(-1).toObject();
-    newReply.likes = newReply.likes || [];
-    return res.status(201).json(newReply);
+    return res.status(201).json(updated.replies.at(-1));
   } catch (err) {
     console.error("[addReply]", err);
     return res.status(500).json({ message: "Server error. Please try again later." });
