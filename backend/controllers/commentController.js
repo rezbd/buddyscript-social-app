@@ -113,7 +113,15 @@ exports.toggleCommentLike = async (req, res) => {
     else comment.likes.splice(idx, 1);
 
     await comment.save();
-    return res.json({ liked, likeCount: comment.likes.length });
+    await comment.populate("author", AUTHOR_SELECT);
+    await comment.populate("likes", AUTHOR_SELECT);
+    await comment.populate("replies.author", AUTHOR_SELECT);
+
+    return res.json({
+      liked,
+      likeCount: comment.likes.length,
+      comment: comment.toObject()
+    });
   } catch (err) {
     console.error("[toggleCommentLike]", err);
     return res.status(500).json({ message: "Server error. Please try again later." });
@@ -137,14 +145,16 @@ exports.addReply = async (req, res) => {
     const post = await resolveAccessiblePost(comment.post, req.user._id, res);
     if (!post) return;
 
-    comment.replies.push({ author: req.user._id, content });
+    comment.replies.push({ author: req.user._id, content, likes: [] });
     await comment.save();
 
     const updated = await Comment.findById(comment._id)
       .populate("author", AUTHOR_SELECT)
       .populate("replies.author", AUTHOR_SELECT);
 
-    return res.status(201).json(updated.replies.at(-1));
+    const newReply = updated.replies.at(-1).toObject();
+    newReply.likes = newReply.likes || [];
+    return res.status(201).json(newReply);
   } catch (err) {
     console.error("[addReply]", err);
     return res.status(500).json({ message: "Server error. Please try again later." });

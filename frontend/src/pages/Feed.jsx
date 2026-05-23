@@ -28,7 +28,14 @@ export default function Feed() {
         signal,
       });
 
+      console.log(`[Feed] Fetched posts response:`, JSON.stringify(data, null, 2));
+
       const incoming = Array.isArray(data.posts) ? data.posts : [];
+
+      // Debug: check if posts have commentCount
+      if (incoming.length > 0) {
+        console.log(`[Feed] First post has commentCount: ${incoming[0].commentCount}`);
+      }
 
       setPosts((prev) =>
         pageNum === 1 ? incoming : [...prev, ...incoming]

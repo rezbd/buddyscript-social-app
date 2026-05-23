@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Post = require("../models/Post");
 const Comment = require("../models/Comment");
 
@@ -79,7 +80,8 @@ exports.getFeed = async (req, res) => {
       Post.countDocuments(query),
     ]);
 
-    const postIds = posts.map((p) => p._id);
+    const postIds = posts.map((p) => new mongoose.Types.ObjectId(p._id));
+
     const commentAgg = await Comment.aggregate([
       { $match: { post: { $in: postIds } } },
       { $group: { _id: "$post", count: { $sum: 1 } } },

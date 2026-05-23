@@ -271,11 +271,10 @@ export default function PostItem({ post }) {
   const [cmtPending, setCmtPending] = useState(false);
   const [cmtError, setCmtError] = useState("");
   const [loadingCmts, setLoadingCmts] = useState(false);
-  // Comment pagination state
   const [cmtPage, setCmtPage] = useState(1);
   const [hasMoreCmts, setHasMoreCmts] = useState(false);
   const [loadingMoreCmts, setLoadingMoreCmts] = useState(false);
-  const [totalCmts, setTotalCmts] = useState(post.commentCount ?? 0);
+  const [totalCmts, setTotalCmts] = useState(post.commentCount ?? null);
 
   const likedByMe = likes.some((l) => String(l._id ?? l) === String(user?.id));
   const likeCount = likes.length;
@@ -331,14 +330,15 @@ export default function PostItem({ post }) {
         ...config
       });
 
-      const incoming = Array.isArray(data.comments) ? data.comments : [];
+      const incoming = Array.isArray(data) ? data : (Array.isArray(data.comments) ? data.comments : []);
+      const total = data.total ?? incoming.length;
+      const hasMore = data.hasMore ?? false;
       setComments((prev) => pageNum === 1 ? incoming : [...prev, ...incoming]);
-      setHasMoreCmts(data.hasMore ?? false);
-      setTotalCmts(data.total ?? 0);
+      setHasMoreCmts(hasMore);
+      setTotalCmts(total);
       setCmtPage(pageNum);
       setCommentsFetched(true);
 
-      // Clear any previous error when fetch succeeds
       setCmtError("");
     } catch (err) {
       console.error("[fetchComments] Error:", err);
@@ -351,7 +351,6 @@ export default function PostItem({ post }) {
       } else {
         setCmtError("Failed to load comments. Please try again.");
       }
-      // Still mark as fetched to prevent re-fetching on toggle
       setCommentsFetched(true);
     } finally {
       setLoadingCmts(false);
@@ -363,7 +362,6 @@ export default function PostItem({ post }) {
     if (!showComments && !commentsFetched) {
       await fetchComments(1);
     } else if (!showComments) {
-      // Comments were fetched but hidden - just show them
     }
     setShowComments((v) => !v);
   };
@@ -376,12 +374,14 @@ export default function PostItem({ post }) {
       const { data } = await api.post(`/posts/${post._id}/comments`, {
         content: commentText.trim(),
       });
-      setComments((prev) => [data, ...prev]);
-      setTotalCmts((n) => n + 1);
       setCommentText("");
-      if (!showComments) {
+
+      if (showComments) {
+        setComments((prev) => [data, ...prev]);
+        setTotalCmts((n) => (n === null ? 1 : n + 1));
+      } else {
+        await fetchComments(1);
         setShowComments(true);
-        setCommentsFetched(true);
       }
     } catch (err) {
       if (err.response?.status === 403) {
@@ -452,7 +452,7 @@ export default function PostItem({ post }) {
               onClick={handleToggleComments}
               style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: "13px" }}
             >
-              <span>{totalCmts}</span> Comment{totalCmts !== 1 ? "s" : ""}
+              {totalCmts === null ? "Comments" : `${totalCmts} ${totalCmts !== 1 ? "Comments" : "Comment"}`}
             </button>
           </p>
         </div>
